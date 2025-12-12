@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor y Control IoT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        .glass-panel {
+            background: rgba(30,41,59,0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .actuator-led {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+    <div class="fixed inset-0 bg-slate-900/80 pointer-events-none"></div>
+
+    <div class="relative z-10 max-w-md mx-auto p-4 min-h-screen flex flex-col">
+
+        <header class="flex justify-between items-center py-6">
+            <div>
+                <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">
+                    Monitor y Control
+                </h1>
+                <p class="text-xs text-slate-400">Sistema de Sensores y Actuadores IoT</p>
+            </div>
+
+            <button onclick="openConfig()" class="p-2 rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-600">
+                <i data-lucide="settings" class="w-5 h-5 text-slate-300"></i>
+            </button>
+        </header>
+
+        <div id="statusIndicator" class="mb-8 flex items-center gap-3 bg-red-500/10 border border-red-500/20 p-3 rounded-lg">
+            <span class="relative flex h-3 w-3">
+                <span class="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
+                <span class="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
+            </span>
+            <span class="text-sm font-medium text-red-400">Desconectado de Firebase</span>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl mb-6 text-center">
+            <i data-lucide="thermometer" class="w-8 h-8 text-cyan-400 mx-auto mb-2"></i>
+            <p class="text-sm text-slate-400">Temperatura Promedio</p>
+            <p id="tempPromedio" class="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">--°C</p>
+        </div>
+
+        <div class="glass-panel p-5 rounded-2xl mb-6 flex justify-between items-center">
+            <div>
+                <h3 class="font-semibold flex items-center gap-2">
+                    <i data-lucide="scan" class="w-5 h-5 text-indigo-400"></i>
+                    Modo de Operación
+                </h3>
+                <span id="currentMode" class="text-sm font-bold text-indigo-400">AUTOMÁTICO</span>
+            </div>
+            
+            <button onclick="changeMode()" id="modeToggleBtn" 
+                class="px-4 py-2 rounded-xl text-white font-bold transition duration-300
+                bg-green-600 hover:bg-green-700">
+                Cambiar a Manual
+            </button>
+        </div>
+        
+        <div id="manualControlPanel" class="glass-panel p-5 rounded-2xl mb-6 space-y-4 hidden">
+            <h3 class="font-semibold flex items-center gap-2 text-red-400">
+                <i data-lucide="wrench" class="w-5 h-5"></i>
+                Control Manual
+            </h3>
+            
+            <div class="flex justify-between items-center bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                <div class="flex items-center gap-3">
+                    <span id="ledAct1" class="actuator-led w-4 h-4 rounded-full bg-slate-600 shadow-inner"></span>
+                    <span class="font-medium">Actuador 1</span>
+                </div>
+                <button onclick="setActuadorState('actuador1', 1)" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-lg text-sm disabled:opacity-50" id="btnAct1On">ON</button>
+                <button onclick="setActuadorState('actuador1', 0)" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-lg text-sm disabled:opacity-50" id="btnAct1Off">OFF</button>
+            </div>
+
+            <div class="flex justify-between items-center bg-slate-800/50 p-3 rounded-lg border border-slate-700">
+                <div class="flex items-center gap-3">
+                    <span id="ledAct2" class="actuator-led w-4 h-4 rounded-full bg-slate-600 shadow-inner"></span>
+                    <span class="font-medium">Actuador 2</span>
+                </div>
+                <button onclick="setActuadorState('actuador2', 1)" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded-lg text-sm disabled:opacity-50" id="btnAct2On">ON</button>
+                <button onclick="setActuadorState('actuador2', 0)" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded-lg text-sm disabled:opacity-50" id="btnAct2Off">OFF</button>
+            </div>
+        </div>
+
+        <main class="space-y-4 flex-grow">
+
+            <script>
+                const sensors = [
+                    { id:"temp1", name:"Sensor 1", color:"red" },
+                    { id:"temp2", name:"Sensor 2", color:"orange" },
+                    { id:"temp3", name:"Sensor 3", color:"yellow" },
+                    { id:"temp4", name:"Sensor 4", color:"green" }
+                ];
+            </script>
+
+            <div id="sensorList"></div>
+
+            <script>
+                const container = document.getElementById("sensorList");
+                sensors.forEach(s => {
+                    container.innerHTML += `
+                    <div class="glass-panel p-5 rounded-xl">
+                        <div class="flex justify-between items-center">
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 bg-${s.color}-500/20 rounded-lg">
+                                    <i data-lucide="thermometer-sun" class="w-5 h-5 text-${s.color}-400"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold">${s.name}</h3>
+                                    <span class="text-xs text-slate-400 font-mono">/sensores/${s.id}</span>
+                                </div>
+                            </div>
+                            <p id="${s.id}" class="text-2xl font-bold text-${s.color}-400">--°C</p>
+                        </div>
+                    </div>`;
+                });
+            </script>
+
+        </main>
+
+        <footer class="mt-8 text-center text-xs text-slate-500">IST Vida Nueva - Investigación</footer>
+    </div>
+
+    <div id="configModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm hidden">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl w-11/12 max-w-md">
+            <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <i data-lucide="database" class="w-5 h-5 text-blue-400"></i>
+                Configuración Firebase
+            </h3>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold">API KEY</label>
+                    <input id="apiKeyInput" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold">DATABASE URL</label>
+                    <input id="dbUrlInput" class="w-full bg-slate-800 border border-slate-600 rounded-lg p-3">
+                </div>
+            </div>
+
+            <div class="mt-6 flex gap-3">
+                <button onclick="closeConfig()" id="btnCancelar" class="flex-1 py-3 text-slate-300">Cancelar</button>
+                <button onclick="saveConfig()" class="flex-1 bg-blue-600 py-3 rounded-xl text-white font-bold">Guardar y Conectar</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        let db = null;
+        const SECRET_KEY = "1234"; // << CLAVE SECRETA
+
+        // Elementos de la UI
+        const currentMode = document.getElementById("currentMode");
+        const modeToggleBtn = document.getElementById("modeToggleBtn");
+        const manualControlPanel = document.getElementById("manualControlPanel");
+        const ledAct1 = document.getElementById("ledAct1");
+        const ledAct2 = document.getElementById("ledAct2");
+        const btnAct1On = document.getElementById("btnAct1On");
+        const btnAct1Off = document.getElementById("btnAct1Off");
+        const btnAct2On = document.getElementById("btnAct2On");
+        const btnAct2Off = document.getElementById("btnAct2Off");
+
+        // --- Funciones de Control de UI ---
+
+        /**
+         * Actualiza el estado visual de un LED de actuador.
+         * @param {HTMLElement} ledElement - Elemento span del LED.
+         * @param {number} state - 0 (OFF) o 1 (ON).
+         */
+        function updateLed(ledElement, state) {
+            if (state == 1) {
+                ledElement.classList.remove("bg-slate-600");
+                ledElement.classList.add("bg-red-500", "shadow-red-500/50", "shadow-lg");
+            } else {
+                ledElement.classList.remove("bg-red-500", "shadow-red-500/50", "shadow-lg");
+                ledElement.classList.add("bg-slate-600");
+            }
+        }
+
+        /**
+         * Actualiza el modo de operación en la UI.
+         * @param {string} mode - "AUTO" o "MANUAL".
+         */
+        function updateModeUI(mode) {
+            currentMode.textContent = mode;
+
+            if (mode === "MANUAL") {
+                manualControlPanel.classList.remove("hidden");
+                modeToggleBtn.textContent = "Cambiar a Automático";
+                modeToggleBtn.classList.remove("bg-green-600", "hover:bg-green-700");
+                modeToggleBtn.classList.add("bg-red-600", "hover:bg-red-700");
+                // Habilitar botones manuales
+                btnAct1On.disabled = false;
+                btnAct1Off.disabled = false;
+                btnAct2On.disabled = false;
+                btnAct2Off.disabled = false;
+            } else {
+                manualControlPanel.classList.add("hidden");
+                modeToggleBtn.textContent = "Cambiar a Manual";
+                modeToggleBtn.classList.remove("bg-red-600", "hover:bg-red-700");
+                modeToggleBtn.classList.add("bg-green-600", "hover:bg-green-700");
+                // Deshabilitar botones manuales
+                btnAct1On.disabled = true;
+                btnAct1Off.disabled = true;
+                btnAct2On.disabled = true;
+                btnAct2Off.disabled = true;
+            }
+        }
+
+        /**
+         * Maneja el cambio de modo (solicita clave para MANUAL).
+         */
+        window.changeMode = async () => {
+            if (!db) {
+                return Swal.fire("Error", "No conectado a Firebase", "error");
+            }
+            
+            const current = currentMode.textContent.trim();
+            let newMode = current === "AUTOMÁTICO" ? "MANUAL" : "AUTOMÁTICO";
+
+            if (newMode === "MANUAL") {
+                const { value: password } = await Swal.fire({
+                    title: 'Acceso Manual Requerido',
+                    input: 'password',
+                    inputLabel: 'Ingresa la clave de acceso:',
+                    inputPlaceholder: 'Clave',
+                    inputAttributes: {
+                        maxlength: 10,
+                        autocapitalize: 'off',
+                        autocorrect: 'off'
+                    },
+                    confirmButtonText: 'Confirmar',
+                    showCancelButton: true,
+                    cancelButtonText: 'Cancelar',
+                    background: '#1e293b',
+                    color: '#f8fafc'
+                });
+
+                if (password && password === SECRET_KEY) {
+                    Swal.fire('Acceso Concedido', 'Modo Manual activado', 'success');
+                    set(ref(db, "control/modo"), "MANUAL");
+                } else if (password) {
+                    Swal.fire('Acceso Denegado', 'Clave incorrecta', 'error');
+                }
+            } else {
+                set(ref(db, "control/modo"), "AUTO");
+            }
+        };
+
+        /**
+         * Establece el estado de un actuador en Firebase (solo en modo MANUAL).
+         * @param {string} actuador - "actuador1" o "actuador2".
+         * @param {number} state - 0 o 1.
+         */
+        window.setActuadorState = (actuador, state) => {
+            if (currentMode.textContent.trim() !== "MANUAL") {
+                return Swal.fire("Modo Incorrecto", "Debes estar en modo MANUAL para controlar los actuadores.", "warning");
+            }
+            if (!db) {
+                return Swal.fire("Error", "No conectado a Firebase", "error");
+            }
+            
+            set(ref(db, `control/${actuador}`), state)
+                .then(() => {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: `${actuador} a ${state === 1 ? 'ON' : 'OFF'}`,
+                        showConfirmButton: false,
+                        timer: 1500
+                    });
+                })
+                .catch(error => {
+                    Swal.fire("Error", "No se pudo escribir en Firebase: " + error.message, "error");
+                });
+        };
+
+
+        // --- Funciones Firebase Originales ---
+
+        window.openConfig = () => configModal.classList.remove("hidden");
+
+        window.closeConfig = () => {
+            const k = localStorage.getItem("iot_api_key");
+            const u = localStorage.getItem("iot_db_url");
+            if (k && u) configModal.classList.add("hidden");
+            else Swal.fire("Requerido", "Debes ingresar credenciales", "warning");
+        };
+
+        window.saveConfig = () => {
+            const key = apiKeyInput.value.trim();
+            const url = dbUrlInput.value.trim();
+
+            if (!key || !url) return Swal.fire("Error", "Faltan datos", "error");
+
+            localStorage.setItem("iot_api_key", key);
+            localStorage.setItem("iot_db_url", url);
+
+            Swal.fire("OK", "Conectando...", "success");
+            initFirebase(key, url);
+            configModal.classList.add("hidden");
+        };
+
+        function initFirebase(apiKey, databaseURL) {
+            const app = initializeApp({ apiKey, databaseURL });
+            db = getDatabase(app);
+
+            const sensoresRef = ref(db, "sensores");
+            const controlRef = ref(db, "control");
+
+            // 1. Lectura de Sensores
+            onValue(sensoresRef, snap => {
+                const data = snap.val();
+                updateStatus(true);
+
+                if (!data) return;
+
+                // Actualiza UI de Sensores
+                updateTemp("temp1", data.temp1);
+                updateTemp("temp2", data.temp2);
+                updateTemp("temp3", data.temp3);
+                updateTemp("temp4", data.temp4);
+
+                const values = [data.temp1, data.temp2, data.temp3, data.temp4]
+                    .filter(v => v !== undefined && v !== null);
+
+                const prom = values.length > 0 ? values.reduce((a,b)=>a+b,0)/values.length : 0;
+                tempPromedio.textContent = prom.toFixed(1) + "°C";
+            }, () => updateStatus(false));
+            
+            // 2. Lectura de Control (Modo y Actuadores)
+            onValue(controlRef, snap => {
+                const data = snap.val();
+                if (!data) return;
+                
+                // Actualiza Modo
+                const mode = data.modo || "AUTO";
+                updateModeUI(mode);
+                
+                // Actualiza LEDs de Actuadores (funciona en AUTO y MANUAL)
+                updateLed(ledAct1, data.actuador1 || 0);
+                updateLed(ledAct2, data.actuador2 || 0);
+                
+            }, () => updateStatus(false)); // Usar el mismo handler de error general de conexión.
+        }
+
+        function updateTemp(id, value) {
+            document.getElementById(id).textContent =
+                (value !== undefined && value !== null) ? value.toFixed(1) + "°C" : "--°C";
+        }
+
+        function updateStatus(ok) {
+            statusIndicator.innerHTML = ok
+                ? `<span class="relative flex h-3 w-3">
+                        <span class="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+                        <span class="relative inline-flex h-3 w-3 bg-emerald-500 rounded-full"></span>
+                    </span>
+                    <span class="text-sm font-medium text-emerald-400">Conectado a Firebase</span>`
+                : `<span class="relative flex h-3 w-3">
+                        <span class="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
+                        <span class="relative inline-flex h-3 w-3 bg-red-500 rounded-full"></span>
+                    </span>
+                    <span class="text-sm font-medium text-red-400">Desconectado</span>`;
+        }
+
+        // Autocargar config
+        lucide.createIcons();
+        const k = localStorage.getItem("iot_api_key");
+        const u = localStorage.getItem("iot_db_url");
+
+        if (k && u) {
+            apiKeyInput.value = k;
+            dbUrlInput.value = u;
+            initFirebase(k, u);
+        } else {
+            configModal.classList.remove("hidden");
+            btnCancelar.disabled = true;
+        }
+    </script>
+
+</body>
+</html>
